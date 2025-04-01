@@ -1,0 +1,45 @@
+#!/bin/sh
+
+# Prüfen, ob mindestens ein Argument (Zeit) übergeben wurde
+if [ -z "$1" ]; then
+    echo 'usage: timer number[unit]
+            -t or --title "Some Title"'
+    echo 'Unit can be "s" (seconds, the default), m (minutes), h (hours), or d (days).'
+    exit 1
+fi
+
+# Zeit speichern (erstes Argument)
+i=$1
+shift  # Erstes Argument entfernen
+
+# Standard-Titel setzen
+title="Der Timer ($i) ist abgelaufen"
+
+# Optionen auswerten
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -h|--help)
+            echo 'usage: timer number[unit]
+                    -t or --title "Some Title"'
+            echo 'Unit can be "s" (seconds, the default), m (minutes), h (hours), or d (days).'
+            exit 0
+            ;;
+        -t|--title)
+            shift
+            title="($1) Timer abgelaufen"
+            ;;
+        *)
+            echo "Unbekannte Option: $1"
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+# Timer starten und Ausgaben finalisieren
+(sleep "$i" && zenity --info --text "$title\n$(date)" --title "Timer" --width=300 --height=100) &
+(sleep "$i" && zenity --notification --text "$title\n$(date)" 2>/dev/null) &
+(sleep "$i" && espeak-ng -vGerman "$title") &
+(sleep "$i" && echo -e "\n\e[1;31m$(date) !!! $title !!!\e[0m") &
+
+exit 0

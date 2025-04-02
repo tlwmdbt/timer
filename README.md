@@ -6,4 +6,4 @@ espeak-ng https://github.com/espeak-ng/espeak-ng
 
 zenity https://help.gnome.org/users/zenity/stable/
 
-yad (Yes another Dialog) https://sourceforge.net/projects/yad-dialog/
+yad (Yet another Dialog) https://sourceforge.net/projects/yad-dialog/

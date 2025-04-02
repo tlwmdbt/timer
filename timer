@@ -1,45 +1,109 @@
+
 #!/bin/sh
 
-# Prüfen, ob mindestens ein Argument (Zeit) übergeben wurde
-if [ -z "$1" ]; then
-    echo 'usage: timer number[unit]
-            -t or --title "Some Title"'
-    echo 'Unit can be "s" (seconds, the default), m (minutes), h (hours), or d (days).'
-    exit 1
-fi
+# Standardwerte setzen
+time_left=""
+title=""
 
-# Zeit speichern (erstes Argument)
-i=$1
-shift  # Erstes Argument entfernen
-
-# Standard-Titel setzen
-title="Der Timer ($i) ist abgelaufen"
-
-# Optionen auswerten
+# Eingaben parsen
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        -t|--title)
+            shift
+            title="$1"
+            ;;
         -h|--help)
             echo 'usage: timer number[unit]
                     -t or --title "Some Title"'
             echo 'Unit can be "s" (seconds, the default), m (minutes), h (hours), or d (days).'
             exit 0
             ;;
-        -t|--title)
-            shift
-            title="($1) Timer abgelaufen"
-            ;;
         *)
-            echo "Unbekannte Option: $1"
-            exit 1
+            if [ -z "$time_left" ]; then
+                time_left="$1"
+            else
+                echo "Unbekannte Option: $1"
+                exit 1
+            fi
             ;;
     esac
     shift
 done
 
-# Timer starten und Ausgaben finalisieren
-(sleep "$i" && zenity --info --text "$title\n$(date)" --title "Timer" --width=300 --height=100) &
-(sleep "$i" && zenity --notification --text "$title\n$(date)" 2>/dev/null) &
-(sleep "$i" && espeak-ng -vGerman "$title") &
-(sleep "$i" && echo -e "\n\e[1;31m$(date) !!! $title !!!\e[0m") &
+# Prüfen, ob eine gültige Zeit angegeben wurde
+if [ -z "$time_left" ]; then
+    echo 'Fehlende Zeitangabe!'
+    echo 'usage: timer number[unit]
+            -t or --title "Some Title"'
+    echo 'Unit kann "s" (Sekunden, Standard), m (Minuten), h (Stunden) oder d (Tage) sein.'
+    exit 1
+fi
+
+# Die Zeitangabe in Sekunden umwandeln
+time_in_seconds=0
+unit=$(echo "$time_left" | sed 's/[^a-zA-Z]*//g')  # Letzte Zeichen (Einheit) extrahieren
+value=$(echo "$time_left" | sed 's/[^0-9]*//g')  # Zahl extrahieren
+
+# Zeit in Sekunden umwandeln, je nach Einheit
+case "$unit" in
+    s)  # Sekunden (keine Umrechnung nötig)
+        time_in_seconds=$value
+        ;;
+    m)  # Minuten
+        time_in_seconds=$(( value * 60 ))
+        ;;
+    h)  # Stunden
+        time_in_seconds=$(( value * 3600 ))
+        ;;
+    d)  # Tage
+        time_in_seconds=$(( value * 86400 ))
+        ;;
+    *)  # Wenn keine gültige Einheit angegeben wurde, nehmen wir Sekunden als Standard
+        time_in_seconds=$value
+        ;;
+esac
+
+# Prüfen, ob die Zeit valid ist (nur Zahlen)
+if ! echo "$time_in_seconds" | grep -q '^[0-9]\+$' || [ "$time_in_seconds" -le 0 ]; then
+    echo "Ungültige Zeitangabe: $time_left"
+    exit 1
+fi
+
+# Standard-Titel setzen, falls keiner angegeben wurde
+if [ -z "$title" ]; then
+    print_title="Timer $time_left"
+#    echo "Die Variable title ist leer!"
+elif [ -n "$title" ]; then
+    print_title="Timer $title"
+#    echo "Die Variable title ist nicht leer!"
+else
+    echo "Something strange has happened!"
+fi
+
+# Funktion zur Umrechnung der verbleibenden Zeit in hh:mm:ss
+format_time() {
+    local total_seconds=$1
+    local hours=$((total_seconds / 3600))
+    local minutes=$(( (total_seconds % 3600) / 60 ))
+    local seconds=$((total_seconds % 60))
+    printf "%02d:%02d:%02d" $hours $minutes $seconds
+}
+
+# YAD Countdown starten
+(
+    while [ "$time_in_seconds" -gt 0 ]; do
+        formatted_time=$(format_time $time_in_seconds)
+        echo "# ⏳ $print_title \n\nVerbleibende Zeit: $formatted_time"
+        sleep 1
+        time_in_seconds=$((time_in_seconds - 1))
+    done
+    # Datum hier einfügen
+    echo "# ⏰ Der Timer $print_title ist abgelaufen\n\n$(date)"
+) | yad --progress --title="Countdown Timer" --pulsate --auto-close --auto-kill --width=400 --height=150 &
+
+# Warten auf Ablauf und dann Aktionen starten
+(sleep "$time_in_seconds" && espeak-ng -vGerman "$print_title ist abgelaufen") &
+(sleep "$time_in_seconds" && zenity --notification --text "$print_title ist abgelaufen\n$(date)" 2>/dev/null) &
+(sleep "$time_in_seconds" && echo -e "\n\e[1;31m$(date)\n    !!! $print_title ist abgelaufen!!!\e[0m") &
 
 exit 0

@@ -12,9 +12,11 @@ while [ "$#" -gt 0 ]; do
             title="$1"
             ;;
         -h|--help)
-            echo 'usage: timer number[unit]
-                    -t or --title "Some Title"'
-            echo 'Unit can be "s" (seconds, the default), m (minutes), h (hours), or d (days).'
+            echo 'Hilfe zur Benutzung:'
+            echo '  Aufruf: timer [Zeit] [-t|--title "Titel des Timers"]'
+            echo '  Jede Zahl muss eine Einheit haben (d, h, m, s).'
+            echo '  Zeit kann kombiniert werden: 1h30m2s (Stunden, Minuten, Sekunden)'
+            echo '  Einheiten: s (Sekunden), m (Minuten), h (Stunden), d (Tage)'
             exit 0
             ;;
         *)
@@ -32,52 +34,77 @@ done
 # Prüfen, ob eine gültige Zeit angegeben wurde
 if [ -z "$time_left" ]; then
     echo 'Fehlende Zeitangabe!'
-    echo 'usage: timer number[unit]
-            -t or --title "Some Title"'
-    echo 'Unit kann "s" (Sekunden, Standard), m (Minuten), h (Stunden) oder d (Tage) sein.'
+    echo '  Aufruf: timer [Zeit] [-t|--title "Titel des Timers"]'
+    echo '  Jede Zahl muss eine Einheit haben (d, h, m, s).'
+    echo '  Zeit kann kombiniert werden: 1h30m2s (Stunden, Minuten, Sekunden)'
+    echo '  Einheiten: s (Sekunden), m (Minuten), h (Stunden), d (Tage)'
     exit 1
 fi
 
-# Die Zeitangabe in Sekunden umwandeln
+# Prüfe auf ungültige Zeichen (nur Zahlen und dhms erlaubt)
+if echo "$time_left" | grep -qE '[^0-9dhms]'; then
+    echo "Fehler: Ungültige Zeichen in der Eingabe!"
+    exit 1
+fi
+
+# Prüfe auf ungültige Formate (verhindert z.B. 3m15 oder 1m59)
+if ! echo "$time_left" | grep -qE '^[0-9]+[dhms]([0-9]+[hms]){0,3}$'; then
+    echo "Fehler: Ungültiges Format. Jede Zahl muss eine Einheit haben (d, h, m, s)."
+    echo "  Beispiel für gültiges Format: 1h30m5s"
+    exit 1
+fi
+
+# Prüfe auf falsche Reihenfolge oder doppelte Einheiten (z.B. 3s60h60d oder 2h5m3h)
+if echo "$time_left" | grep -qE '.*[s].*[mhd]|.*[m].*[hd]|.*[h].*[d]'; then
+    echo "Fehler: Ungültige Reihenfolge oder doppelte Einheiten."
+    echo "  Die richtige Reihenfolge ist: Tage(d), Stunden(h), Minuten(m), Sekunden(s)."
+    echo "  Beispiel für gültiges Format: 1d2h30m5s"
+    exit 1
+fi
+
+
+# Die Zeitangabe in Sekunden umwandeln - Neue komplexe Verarbeitung
 time_in_seconds=0
-unit=$(echo "$time_left" | sed 's/[^a-zA-Z]*//g')  # Letzte Zeichen (Einheit) extrahieren
-value=$(echo "$time_left" | sed 's/[^0-9]*//g')  # Zahl extrahieren
 
-# Zeit in Sekunden umwandeln, je nach Einheit
-case "$unit" in
-    s)  # Sekunden (keine Umrechnung nötig)
-        time_in_seconds=$value
-        ;;
-    m)  # Minuten
-        time_in_seconds=$(( value * 60 ))
-        ;;
-    h)  # Stunden
-        time_in_seconds=$(( value * 3600 ))
-        ;;
-    d)  # Tage
-        time_in_seconds=$(( value * 86400 ))
-        ;;
-    *)  # Wenn keine gültige Einheit angegeben wurde, nehmen wir Sekunden als Standard
-        time_in_seconds=$value
-        ;;
-esac
+# Extrahiere Stunden
+hours=$(echo "$time_left" | grep -o '[0-9]\+h' | sed 's/h//')
+if [ -n "$hours" ]; then
+    time_in_seconds=$(( time_in_seconds + hours * 3600 ))
+fi
 
-# Prüfen, ob die Zeit valid ist (nur Zahlen)
-if ! echo "$time_in_seconds" | grep -q '^[0-9]\+$' || [ "$time_in_seconds" -le 0 ]; then
+# Extrahiere Minuten
+minutes=$(echo "$time_left" | grep -o '[0-9]\+m' | sed 's/m//')
+if [ -n "$minutes" ]; then
+    time_in_seconds=$(( time_in_seconds + minutes * 60 ))
+fi
+
+# Extrahiere Sekunden
+seconds=$(echo "$time_left" | grep -o '[0-9]\+s' | sed 's/s//')
+if [ -n "$seconds" ]; then
+    time_in_seconds=$(( time_in_seconds + seconds ))
+fi
+
+# Extrahiere Tage
+days=$(echo "$time_left" | grep -o '[0-9]\+d' | sed 's/d//')
+if [ -n "$days" ]; then
+    time_in_seconds=$(( time_in_seconds + days * 86400 ))
+fi
+
+# Wenn keine Einheit angegeben wurde, interpretiere die Eingabe als Sekunden
+if [ "$time_in_seconds" -eq 0 ]; then
+    if echo "$time_left" | grep -q '^[0-9]\+$'; then
+        time_in_seconds=$time_left
+    fi
+fi
+
+# Prüfen, ob die Zeit valid ist
+if [ "$time_in_seconds" -le 0 ]; then
     echo "Ungültige Zeitangabe: $time_left"
     exit 1
 fi
 
-# Standard-Titel setzen, falls keiner angegeben wurde
-if [ -z "$title" ]; then
-    print_title="Timer $time_left"
-#    echo "Die Variable title ist leer!"
-elif [ -n "$title" ]; then
-    print_title="Timer $title"
-#    echo "Die Variable title ist nicht leer!"
-else
-    echo "Something strange has happened!"
-fi
+# Original-Zeit für die Anzeige speichern
+original_time=$time_in_seconds
 
 # Funktion zur Umrechnung der verbleibenden Zeit in hh:mm:ss
 format_time() {
@@ -88,21 +115,46 @@ format_time() {
     printf "%02d:%02d:%02d" $hours $minutes $seconds
 }
 
-# YAD Countdown starten
+# Titel setzen
+if [ -z "$title" ]; then
+    formatted_time=$(format_time $time_in_seconds)
+    print_title="Timer \"$formatted_time\""
+else
+    print_title="Timer \"$title\""
+fi
+
+# YAD Progress Bar korrekt konfigurieren
 (
+    # Initialisierung mit 0%
+    echo "0"
+    
     while [ "$time_in_seconds" -gt 0 ]; do
+        # Prozentsatz berechnen: (original - verbleibend) / original * 100
+        percentage=$(( (original_time - time_in_seconds) * 100 / original_time ))
+        
+        # Formatierte Zeit
         formatted_time=$(format_time $time_in_seconds)
-        echo "# ⏳ $print_title \n\nVerbleibende Zeit: $formatted_time"
+        
+        # Aktualisierung mit Prozent und Text
+        echo "$percentage"
+        echo "# ⏳ Verbleibende Zeit: $formatted_time\n"
+        
         sleep 1
         time_in_seconds=$((time_in_seconds - 1))
     done
-    # Datum hier einfügen
-    echo "# ⏰ Der Timer $print_title ist abgelaufen\n\n$(date)"
-) | yad --progress --title="Countdown Timer" --pulsate --auto-close --auto-kill --width=400 --height=150 &
+    
+    # 100% am Ende
+    echo "100"
+    echo "# ⏰ Timer abgelaufen!\n"
+    
+) | yad --progress --title="Timer läuft..." --text="$print_title \n" --width=400 --height=150 &
 
 # Warten auf Ablauf und dann Aktionen starten
-(sleep "$time_in_seconds" && espeak-ng -vGerman "$print_title ist abgelaufen") &
-(sleep "$time_in_seconds" && zenity --notification --text "$print_title ist abgelaufen\n$(date)" 2>/dev/null) &
-(sleep "$time_in_seconds" && echo -e "\n\e[1;31m$(date)\n    !!! $print_title ist abgelaufen!!!\e[0m") &
+(sleep "$original_time" && espeak-ng -vGerman "$print_title ist abgelaufen") &
+(sleep "$original_time" && zenity --notification --text "$print_title ist abgelaufen\n$(date)" 2>/dev/null) &
+(sleep "$original_time" && echo -e "\n\e[1;31m$(date)\n    !!! $print_title ist abgelaufen!!!\e[0m") &
+
+# In Syslog schreiben (FreeBSD-Format)
+(sleep "$original_time" && logger "!!! $print_title ist abgelaufen!!!") &
 
 exit 0

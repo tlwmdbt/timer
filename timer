@@ -118,9 +118,9 @@ format_time() {
 # Titel setzen
 if [ -z "$title" ]; then
     formatted_time=$(format_time $time_in_seconds)
-    print_title="Timer \"$formatted_time\""
+    print_title="$formatted_time"
 else
-    print_title="Timer \"$title\""
+    print_title="$title"
 fi
 
 # YAD Progress Bar korrekt konfigurieren
@@ -137,7 +137,7 @@ fi
         
         # Aktualisierung mit Prozent und Text
         echo "$percentage"
-        echo "# ⏳ Verbleibende Zeit: $formatted_time\n"
+        echo "# Verbleibende Zeit: $formatted_time\n"
         
         sleep 1
         time_in_seconds=$((time_in_seconds - 1))
@@ -147,14 +147,14 @@ fi
     echo "100"
     echo "# ⏰ Timer abgelaufen!\n"
     
-) | yad --progress --title="Timer läuft..." --text="$print_title \n" --width=400 --height=150 &
+) | yad --no-escape --on-top --sticky --progress --title="Timer läuft..." --text-align=center --text="<span font_desc='Vera Sans mono 13' foreground='#7abb95'>$print_title\n</span>" --width=400 --height=150 &
 
 # Warten auf Ablauf und dann Aktionen starten
-(sleep "$original_time" && espeak-ng -vGerman "$print_title ist abgelaufen") &
-(sleep "$original_time" && zenity --notification --text "$print_title ist abgelaufen\n$(date)" 2>/dev/null) &
-(sleep "$original_time" && echo -e "\n\e[1;31m$(date)\n    !!! $print_title ist abgelaufen!!!\e[0m") &
+(sleep "$original_time" && espeak-ng -vGerman "Timer \"$print_title\" ist abgelaufen") &
+(sleep "$original_time" && zenity --notification --text "Timer \"$print_title\" ist abgelaufen\n$(date)" 2>/dev/null) &
+(sleep "$original_time" && echo -e "\n\e[1;31m$(date)\n    !!! Timer \"$print_title\" ist abgelaufen!!!\e[0m") &
 
 # In Syslog schreiben (FreeBSD-Format)
-(sleep "$original_time" && logger "!!! $print_title ist abgelaufen!!!") &
+(sleep "$original_time" && logger "!!! Timer \"$print_title\" ist abgelaufen!!!") &
 
 exit 0
